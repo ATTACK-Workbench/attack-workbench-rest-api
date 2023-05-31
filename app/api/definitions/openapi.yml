@@ -296,3 +296,7 @@ paths:
 
   /api/teams/{id}/users:
     $ref: 'paths/teams-paths.yml#/paths/~1api~1teams~1{id}~1users'
+
+  # Data Integrity
+  /api/data-integrity:
+    $ref: 'paths/data-integrity-paths.yml#/paths/~1api~1data-integrity'

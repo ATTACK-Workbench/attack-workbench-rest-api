@@ -1,0 +1,12 @@
+paths:
+  /api/data-integrity:
+    get:
+      summary: 'Perform a data integrity test and return the results'
+      operationId: 'data-integrity-get-all'
+      description: |
+        This endpoint initiates a data integrity test and returns the results.
+      tags:
+        - 'Data Integrity'
+      responses:
+        '200':
+          description: 'Data integrity test'

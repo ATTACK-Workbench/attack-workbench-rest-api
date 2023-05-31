@@ -430,7 +430,6 @@ exports.addCreatedByAndModifiedByIdentitiesToAll = async function(attackObjects)
     const identityCache = new Map();
     const userAccountCache = new Map();
     for (const attackObject of attackObjects) {
-        // eslint-disable-next-line no-await-in-loop
         await addCreatedByAndModifiedByIdentities(attackObject, identityCache, userAccountCache);
     }
 }

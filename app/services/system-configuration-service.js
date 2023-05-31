@@ -133,7 +133,6 @@ exports.retrieveDefaultMarkingDefinitions = async function(options) {
             else {
                 const defaultMarkingDefinitions = [];
                 for (const stixId of systemConfig.default_marking_definitions) {
-                    // eslint-disable-next-line no-await-in-loop
                     const markingDefinition = await MarkingDefinition.findOne({ 'stix.id': stixId }).lean();
                     if (markingDefinition) {
                         defaultMarkingDefinitions.push(markingDefinition);

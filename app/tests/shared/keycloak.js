@@ -186,7 +186,6 @@ exports.addUsersToKeycloak = async function (serverOptions, users) {
     }
 
     for (const user of users) {
-        // eslint-disable-next-line no-await-in-loop
         await createUser(serverOptions.basePath, serverOptions.realmName, user, adminAccessToken);
     }
 }

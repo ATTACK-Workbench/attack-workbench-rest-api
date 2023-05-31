@@ -135,7 +135,6 @@ async function addExtraData(dataSource, retrieveDataComponents) {
 
 async function addExtraDataToAll(dataSources, retrieveDataComponents) {
     for (const dataSource of dataSources) {
-        // eslint-disable-next-line no-await-in-loop
         await addExtraData(dataSource, retrieveDataComponents);
     }
 }

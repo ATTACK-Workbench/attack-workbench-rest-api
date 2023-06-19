@@ -1,9 +1,17 @@
 'use strict';
 
 const attackObjectsService = require('../services/attack-objects-service');
+const campaignsService = require('../services/campaigns-service');
 const relationshipsService = require('../services/relationships-service');
 
 const logger = require('./logger');
+
+const Ajv2020 = require('ajv/dist/2020');
+const util = require('util');
+const fs = require('fs');
+const path = require('path');
+
+const ajv = new Ajv2020({ strict: false, allErrors: true });
 
 function createAndLogIssue(rule, object, options) {
     const issue =  {
@@ -111,4 +119,44 @@ exports.modifiedNotBeforeCreated = async function(options) {
     }
 
     return issues;
+}
+
+function fixSchemaRef(schema) {
+    const schemaRefUrl = new URL(schema.$schema);
+    schemaRefUrl.protocol = 'https';
+    schema.$schema = schemaRefUrl.href;
+}
+
+fs.readdirSync(path.join(__dirname, '../../stix-json-schemas/common')).forEach(function(filename) {
+    if (filename.endsWith('.json')) {
+        const schema = require(path.join('../../stix-json-schemas/common', filename));
+        fixSchemaRef(schema);
+        ajv.addSchema(schema);
+    }
+});
+
+const campaignSchema = require('../../stix-json-schemas/sdos/campaign.json');
+fixSchemaRef(campaignSchema);
+ajv.addSchema(campaignSchema);
+
+const attackCampaignSchema = require('../../attack-json-schemas/campaign.json');
+ajv.addSchema(attackCampaignSchema);
+
+const retrieveAllCampaigns = util.promisify(campaignsService.retrieveAll);
+exports.campaignConformsToSchema = async function(options) {
+    const campaignValidator = ajv.getSchema('https://mitre.org/attack-workbench/attack-workbench-rest-api/attackSpec3.1.0/attack-json-schemas/campaign.json');
+
+    const campaigns = await retrieveAllCampaigns({ versions: 'latest', includeRevoked: true, includeDeprecated: true });
+    console.log(`retrieved ${ campaigns.length } campaigns`)
+    for (const campaign of campaigns) {
+        if (campaign.stix.x_mitre_contributors.length === 0) {
+            delete campaign.stix.x_mitre_contributors;
+        }
+        const valid = campaignValidator(JSON.parse(JSON.stringify(campaign.stix)));
+        if (!valid) {
+            console.log(campaign.stix.id);
+            console.log(campaignValidator.errors);
+            console.log(campaign.stix);
+        }
+    }
 }

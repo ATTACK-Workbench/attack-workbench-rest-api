@@ -131,7 +131,7 @@ describe('OIDC User Authentication', function () {
                 if (err) {
                     done(err);
                 } else {
-                    // Save the cookies for later tests
+                    // This cookie is used by the REST API to identify the server-side session associated with this user
                     const newCookies = setCookieParser(res);
                     updateCookies(newCookies, apiCookies);
 
@@ -144,8 +144,9 @@ describe('OIDC User Authentication', function () {
     });
 
     let signInPath;
-    const ipCookies = new Map();
+    const challengeCookies = new Map();
     it('redirect successfully receives a challenge from the identity provider', function (done) {
+        console.log(redirectPath)
         const url = new URL(redirectPath);
         const server = `${ url.protocol }//${ url.host }`;
         const path = url.pathname;
@@ -157,9 +158,9 @@ describe('OIDC User Authentication', function () {
                 if (err) {
                     done(err);
                 } else {
-                    // Save the cookies for later tests
+                    // These cookies are used by the identity provider when challenging the user for their credentials
                     const newCookies = setCookieParser(res);
-                    updateCookies(newCookies, ipCookies);
+                    updateCookies(newCookies, challengeCookies);
 
                     const action = extractFormAction(res.text);
                     signInPath = action.value;
@@ -169,6 +170,7 @@ describe('OIDC User Authentication', function () {
             });
     });
 
+    const identityProviderCookies = new Map();
     it('POST formpath successfully signs into the identity provider', function (done) {
         const signinUrl = new URL(signInPath);
         const server = `${ signinUrl.protocol }//${ signinUrl.host }`;
@@ -176,7 +178,7 @@ describe('OIDC User Authentication', function () {
         const search = signinUrl.search;
         request(server)
             .post(path + search)
-            .set('Cookie', Array.from(ipCookies.values()))
+            .set('Cookie', Array.from(challengeCookies.values()))
             .send(`username=${ testUser.username }`)
             .send(`password=${ testUser.password }`)
             .send('credentialId=')
@@ -187,6 +189,10 @@ describe('OIDC User Authentication', function () {
                 } else {
                     // Get the redirect location
                     redirectPath = res.headers.location;
+
+                    // These cookies indicate to the identity provider that the user is signed in
+                    const newCookies = setCookieParser(res);
+                    updateCookies(newCookies, identityProviderCookies);
 
                     done();
                 }
@@ -291,6 +297,113 @@ describe('OIDC User Authentication', function () {
             .get('/api/authn/anonymous/logout')
             .set('Accept', 'application/json')
             .expect(404)
+            .end(function (err, res) {
+                if (err) {
+                    done(err);
+                } else {
+                    done();
+                }
+            });
+    });
+
+    // Repeat the sign-in process, but with the user already signed into the identity provider
+    it('GET /api/authn/oidc/login successfully receives a redirect to the identity provider', function (done) {
+        const encodedDestination = encodeURIComponent(destination);
+        request(app)
+            .get(`/api/authn/oidc/login?destination=${ encodedDestination }`)
+            .expect(302)
+            .end(function (err, res) {
+                if (err) {
+                    done(err);
+                } else {
+                    // Save the cookies for later tests
+                    const newCookies = setCookieParser(res);
+                    updateCookies(newCookies, apiCookies);
+
+                    // Get the redirect location
+                    redirectPath = res.headers.location;
+
+                    done();
+                }
+            });
+    });
+
+    it('redirect successfully receives a redirect back to the REST API', function (done) {
+        const url = new URL(redirectPath);
+        const server = `${ url.protocol }//${ url.host }`;
+        const path = url.pathname;
+        const search = url.search;
+        request(server)
+            .get(path + search)
+            .set('Cookie', Array.from(identityProviderCookies.values()))
+            .expect(302)
+            .end(function (err, res) {
+                if (err) {
+                    done(err);
+                } else {
+                    // Get the redirect location
+                    redirectPath = res.headers.location;
+
+                    done();
+                }
+            });
+    });
+
+    it('redirect successfully completes the sign in process', function (done) {
+        const url = new URL(redirectPath);
+        const server = `${ url.protocol }//${ url.host }`;
+        const path = url.pathname;
+        const search = url.search;
+        request(server)
+            .get(path + search)
+            .set('Cookie', Array.from(apiCookies.values()))
+            .expect(302)
+            .end(function (err, res) {
+                if (err) {
+                    done(err);
+                } else {
+                    // Session ID is changed after login, save the cookie for later tests
+                    const newCookies = setCookieParser(res);
+                    updateCookies(newCookies, apiCookies);
+
+                    // Get the redirect location
+                    redirectPath = res.headers.location;
+
+                    // This should be the destination provided at the start of the sign in process
+                    expect(redirectPath).toBe(destination);
+
+                    done();
+                }
+            });
+    });
+
+    it('GET /api/session returns the user session', function (done) {
+        request(app)
+            .get('/api/session')
+            .set('Accept', 'application/json')
+            .set('Cookie', Array.from(apiCookies.values()))
+            .expect(200)
+            .end(function(err, res) {
+                if (err) {
+                    done(err);
+                }
+                else {
+                    // We expect to get the current session
+                    const session = res.body;
+                    expect(session).toBeDefined();
+                    expect(session.email).toBe('test@test.com');
+
+                    done();
+                }
+            });
+    });
+
+    it('GET /api/authn/oidc/logout successfully logs the user out', function (done) {
+        request(app)
+            .get('/api/authn/oidc/logout')
+            .set('Accept', 'application/json')
+            .set('Cookie', Array.from(apiCookies.values()))
+            .expect(200)
             .end(function (err, res) {
                 if (err) {
                     done(err);

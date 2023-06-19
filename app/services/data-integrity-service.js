@@ -9,6 +9,7 @@ async function performDataIntegrityTest() {
     // testResults.noDeprecatedRelationships = await dataIntegrityTests.noDeprecatedRelationships(options);
     testResults.noRevokedRelationships = await dataIntegrityTests.noRevokedRelationships(options);
     testResults.modifiedNotBeforeCreated = await dataIntegrityTests.modifiedNotBeforeCreated(options);
+    testResults.campaignConformsToSchema = await dataIntegrityTests.campaignConformsToSchema(options);
 
     return testResults;
 }

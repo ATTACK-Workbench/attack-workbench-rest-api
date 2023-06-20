@@ -19,7 +19,7 @@ const errors = {
 };
 exports.errors = errors;
 
-exports.retrieveAll = function(options, callback) {
+exports.retrieveAll = async function(options) {
     // Build the query
     const query = {};
     if (!options.includeRevoked) {
@@ -80,34 +80,26 @@ exports.retrieveAll = function(options, callback) {
     aggregation.push(facet);
 
     // Retrieve the documents
-    Group.aggregate(aggregation, function(err, results) {
-        if (err) {
-            return callback(err);
+    const results = await Group.aggregate(aggregation);
+    await identitiesService.addCreatedByAndModifiedByIdentitiesToAll(results[0].documents);
+    if (options.includePagination) {
+        let derivedTotalCount = 0;
+        if (results[0].totalCount.length > 0) {
+            derivedTotalCount = results[0].totalCount[0].totalCount;
         }
-        else {
-            identitiesService.addCreatedByAndModifiedByIdentitiesToAll(results[0].documents)
-                .then(function() {
-                    if (options.includePagination) {
-                        let derivedTotalCount = 0;
-                        if (results[0].totalCount.length > 0) {
-                            derivedTotalCount = results[0].totalCount[0].totalCount;
-                        }
-                        const returnValue = {
-                            pagination: {
-                                total: derivedTotalCount,
-                                offset: options.offset,
-                                limit: options.limit
-                            },
-                            data: results[0].documents
-                        };
-                        return callback(null, returnValue);
-                    }
-                    else {
-                        return callback(null, results[0].documents);
-                    }
-                });
-        }
-    });
+        const returnValue = {
+            pagination: {
+                total: derivedTotalCount,
+                offset: options.offset,
+                limit: options.limit
+            },
+            data: results[0].documents
+        };
+        return returnValue;
+    }
+    else {
+        return results[0].documents;
+    }
 };
 
 exports.retrieveById = function(stixId, options, callback) {

@@ -1,6 +1,7 @@
 'use strict';
 
 const collectionBundlesService = require('../services/collection-bundles-service');
+const collectionBundlesValidator = require('../validators/collection-bundles-validator');
 const logger = require('../lib/logger');
 
 const availableForceImportParameters = [
@@ -52,20 +53,22 @@ exports.importBundle = function(req, res) {
     // Find the x-mitre-collection objects
     const collections = collectionBundleData.objects.filter(object => object.type === 'x-mitre-collection');
 
+    const issues = collectionBundlesValidator.validateCollectionBundle(collectionBundleData);
+
     // The bundle must have an x-mitre-collection object
-    if (collections.length === 0) {
+    if (issues.some(i => i.rule === collectionBundlesValidator.rules.bundleMayNotHaveZeroCollections)) {
         logger.warn("Collection bundle is missing x-mitre-collection object.");
         errorResult.bundleErrors.noCollection = true;
         errorFound = true;
     }
-    else if (collections.length > 1) {
+    else if (issues.some(i => i.rule === collectionBundlesValidator.rules.bundleMayNotHaveMoreThanOneCollection)) {
         logger.warn("Collection bundle has more than one x-mitre-collection object.");
         errorResult.bundleErrors.moreThanOneCollection = true;
         errorFound = true;
     }
 
     // The collection must have an id.
-    if (collections.length > 0 && !collections[0].id) {
+    if (issues.some(i => i.rule === collectionBundlesValidator.rules.collectionMustHaveAnId)) {
         logger.warn('Badly formatted collection in bundle, x-mitre-collection missing id.');
         errorResult.bundleErrors.badlyFormattedCollection = true;
         errorFound = true;
@@ -74,14 +77,16 @@ exports.importBundle = function(req, res) {
     const validationResult = collectionBundlesService.validateBundle(collectionBundleData);
     if (validationResult.errors.length > 0) {
         errorFound = true;
-        if (validationResult.duplicateObjectInBundleCount > 0) {
-            logger.warn(`Collection bundle has ${ validationResult.duplicateObjectInBundleCount } duplicate objects.`);
-            errorResult.objectErrors.summary.duplicateObjectInBundleCount = validationResult.duplicateObjectInBundleCount;
+        const duplicateObjectCount = issues.filter(i => i.rule === collectionBundlesValidator.rules.objectRefMustBeUnique).length;
+        if (duplicateObjectCount > 0) {
+            logger.warn(`Collection bundle has ${ duplicateObjectCount } duplicate objects.`);
+            errorResult.objectErrors.summary.duplicateObjectInBundleCount = duplicateObjectCount;
         }
 
-        if (validationResult.invalidAttackSpecVersionCount > 0) {
-            logger.warn(`Collection bundle has ${ validationResult.invalidAttackSpecVersionCount } objects with invalid ATT&CK Spec Versions.`);
-            errorResult.objectErrors.summary.invalidAttackSpecVersionCount = validationResult.invalidAttackSpecVersionCount;
+        const invalidAttackSpecVersionCount = issues.filter(i => i.rule === collectionBundlesValidator.rules.attackSpecVersionMustBeValid).length;
+        if (invalidAttackSpecVersionCount > 0) {
+            logger.warn(`Collection bundle has ${ invalidAttackSpecVersionCount } objects with invalid ATT&CK Spec Versions.`);
+            errorResult.objectErrors.summary.invalidAttackSpecVersionCount = invalidAttackSpecVersionCount;
         }
 
         errorResult.objectErrors.errors.push(...validationResult.errors);

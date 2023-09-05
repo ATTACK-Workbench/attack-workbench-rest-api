@@ -1,8 +1,9 @@
+const AbstractRepository = require('./repository.abstract');
 const UserAccount = require('../models/user-account-model');
 const regexValidator = require('../lib/regex');
+const { DatabaseError, DuplicateIdError, BadlyFormattedParameterError } = require('../exceptions');
 
-exports.retrieveAll = function (options) {
-
+exports.findAll = async function (options) {
     // Build the query
     const query = {};
     if (typeof options.status !== 'undefined') {
@@ -61,14 +62,22 @@ exports.retrieveAll = function (options) {
     }
     aggregation.push(facet);
 
-    // Retrieve the documents
-    return UserAccount.aggregate(aggregation).exec();
+    try {
+        // Retrieve the documents
+        return await UserAccount.aggregate(aggregation).exec();
+    } catch (err) {
+        throw new DatabaseError(err);
+    }
 };
 
-exports.findOneById = function (userAccountId) {
-    // Note: The .lean().exec() parts are used in Mongoose for converting the returned document to a plain JavaScript object. 
-    // If you're not using Mongoose, you might not need them.
-    return UserAccount.findOne({ 'id': userAccountId }).lean().exec();
+exports.findOneById = async function (userAccountId) {
+    try {
+        // Note: The .lean().exec() parts are used in Mongoose for converting the returned document to a plain JavaScript object.
+        // If you're not using Mongoose, you might not need them.
+        return await UserAccount.findOne({ 'id': userAccountId }).lean().exec();
+    } catch (err) {
+        throw new DatabaseError(err);
+    }
 };
 
 exports.findOneByEmail = function (email) {
@@ -109,3 +118,12 @@ exports.updateById = async function (userAccountId, data) {
 exports.removeById = function (userAccountId) {
     return UserAccount.findOneAndRemove({ 'id': userAccountId }).exec();
 };
+
+
+/**
+ * If a function is not directly found on the exports object in repository.abstract.js, 
+ * JavaScript will look up its prototype chain to find it. If it exists on the abstractRepo, 
+ * it will use that. This effectively allows the concrete repository to "inherit" methods 
+ * from the abstract repository.
+ */
+Object.setPrototypeOf(exports, AbstractRepository);

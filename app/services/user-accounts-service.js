@@ -42,7 +42,7 @@ exports.retrieveAll = async function (options) {
 
     let results;
     try {
-        results = await userAccountsRepository.retrieveAll(options);
+        results = await userAccountsRepository.findAll(options);
     } catch (err) {
         throw new Errors.DatabaseError({ detail: 'Failed to retrieve records from the userAccounts repository', originalError: err.message });
     }

@@ -1,7 +1,7 @@
 const AbstractRepository = require('./repository.abstract');
 const UserAccount = require('../models/user-account-model');
 const regexValidator = require('../lib/regex');
-const { DatabaseError, DuplicateIdError, BadlyFormattedParameterError } = require('../exceptions');
+const { DatabaseError, BadlyFormattedParameterError, DuplicateIdError } = require('../exceptions');
 
 exports.findAll = async function (options) {
     // Build the query
@@ -76,47 +76,86 @@ exports.findOneById = async function (userAccountId) {
         // If you're not using Mongoose, you might not need them.
         return await UserAccount.findOne({ 'id': userAccountId }).lean().exec();
     } catch (err) {
+        if (err.name === 'CastError') {
+            throw new BadlyFormattedParameterError({ parameterName: 'stixId' });
+        } else if (err.name === 'MongoServerError' && err.code === 11000) {
+            throw new DuplicateIdError(err);
+        }
         throw new DatabaseError(err);
     }
 };
 
-exports.findOneByEmail = function (email) {
-    return UserAccount.findOne({ 'email': email }).lean().exec();
+exports.findOneByEmail = async function (email) {
+    try {
+        return await UserAccount.findOne({ 'email': email }).lean().exec();
+    } catch (err) {
+        if (err.name === 'CastError') {
+            throw BadlyFormattedParameterError({ parameterName: 'email' });
+        }
+        throw DatabaseError(err);
+    }
 };
 
-exports.findByEmail = function (email) {
-    return UserAccount.findOne({ 'email': email }).lean().exec();
+exports.findByEmail = async function (email) {
+    try {
+        return await UserAccount.findOne({ 'email': email }).lean().exec();
+    } catch (err) {
+        throw DatabaseError(err);
+    }
 };
 
-exports.save = function (userAccountData) {
-    const userAccount = new UserAccount(userAccountData);
-    return userAccount.save();
+exports.save = async function (userAccountData) {
+    try {
+        const userAccount = new UserAccount(userAccountData);
+        return await userAccount.save();
+    } catch (err) {
+        if (err.name === 'MongoServerError' && err.code === 11000) {
+            // 11000 = Duplicate index
+            throw DuplicateIdError(err);
+        }
+        throw DatabaseError(err);
+    }
 };
 
 exports.updateById = async function (userAccountId, data) {
-    const document = await UserAccount.findOne({ 'id': userAccountId });
+    try {
+        const document = await UserAccount.findOne({ 'id': userAccountId });
 
-    if (!document) {
-        // document not found
-        return null;
+        if (!document) {
+            // document not found
+            return null;
+        }
+
+        // Copy data to found document
+        document.email = data.email;
+        document.username = data.username;
+        document.displayName = data.displayName;
+        document.status = data.status;
+        document.role = data.role;
+
+        // Set the modified timestamp
+        document.modified = new Date().toISOString();
+
+        // Save and return the document
+        return await document.save();
+    } catch (err) {
+        if (err.name === 'CastError') {
+            throw BadlyFormattedParameterError(err);
+        }
+        else if (err.name === 'MongoServerError' && err.code === 11000) {
+            // 11000 = Duplicate index
+            throw DuplicateIdError(err);
+        }
+        throw DatabaseError(err);
     }
-
-    // Copy data to found document
-    document.email = data.email;
-    document.username = data.username;
-    document.displayName = data.displayName;
-    document.status = data.status;
-    document.role = data.role;
-
-    // Set the modified timestamp
-    document.modified = new Date().toISOString();
-
-    // Save and return the document
-    return document.save();
 };
 
-exports.removeById = function (userAccountId) {
-    return UserAccount.findOneAndRemove({ 'id': userAccountId }).exec();
+exports.removeById = async function (userAccountId) {
+    try {
+        return await UserAccount.findOneAndRemove({ 'id': userAccountId }).exec();
+    } catch (err) {
+        throw DatabaseError(err);
+    }
 };
 
 

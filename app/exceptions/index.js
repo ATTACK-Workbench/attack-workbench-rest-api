@@ -32,6 +32,12 @@ class DuplicateIdError extends CustomError {
     }
 }
 
+class DuplicateEmailError extends CustomError {
+    constructor(options) {
+        super('Duplicate email', options);
+    }
+}
+
 class NotFoundError extends CustomError {
     constructor(options) {
         super('Document not found', options);
@@ -91,4 +97,7 @@ module.exports = {
     IdentityServiceError,
     TechniquesServiceError,
     TacticsServiceError,
+
+    /** UserAccounts related */
+    DuplicateEmailError
 };

@@ -3,17 +3,9 @@
 const uuid = require('uuid');
 const userAccountsRepository = require('../repository/user-accounts-repository');
 const teamsRepository = require('../repository/teams-repository');
-const Errors = require('../exceptions');
+const logger = require('../lib/logger');
+const { MissingParameterError, DuplicateEmailError, NotFoundError } = require('../exceptions');
 
-const errors = {
-    missingParameter: 'Missing required parameter',
-    badlyFormattedParameter: 'Badly formatted parameter',
-    duplicateId: 'Duplicate id',
-    duplicateEmail: 'Duplicate email',
-    notFound: 'Document not found',
-    invalidQueryStringParameter: 'Invalid query string parameter'
-};
-exports.errors = errors;
 
 const addEffectiveRole = function (userAccount) {
   // Initially, this forces all pending and inactive accounts to have the role 'none'.
@@ -44,7 +36,8 @@ exports.retrieveAll = async function (options) {
     try {
         results = await userAccountsRepository.findAll(options);
     } catch (err) {
-        throw new Errors.DatabaseError({ detail: 'Failed to retrieve records from the userAccounts repository', originalError: err.message });
+        logger.error('Failed to retrieve records from the userAccounts repository');
+        throw err; // Let the DatabaseError bubble up
     }
 
     const userAccounts = results[0].documents;
@@ -76,47 +69,40 @@ exports.retrieveAll = async function (options) {
 
 exports.retrieveById = async function (userAccountId, options) {
     if (!userAccountId) {
-        const error = new Error(errors.missingParameter);
-        error.parameterName = 'userId';
-        throw error;
+        throw new MissingParameterError({ parameterName: 'stixId' });
     }
 
     try {
         const userAccount = await userAccountsRepository.findOneById(userAccountId);
 
         if (!userAccount) {
-            throw new Error('UserAccount not found.');
+            throw new NotFoundError({ message: 'UserAccount not found' });
         }
 
         addEffectiveRole(userAccount);
-        if (options.includeStixIdentity) {
+        if (options & options.includeStixIdentity) {
             userAccount.identity = userAccountAsIdentity(userAccount);
         }
 
         return userAccount;
 
     } catch (err) {
-        if (err.name === 'CastError') {
-            const error = new Error(errors.badlyFormattedParameter);
-            error.parameterName = 'userId';
-            throw error;
-        } else {
-            throw err;
-        }
+        logger.error('Failed to retrieve user account by ID');
+        throw err;
     }
 };
 
 exports.retrieveByEmail = async function(email) {
     if (!email) {
-        const error = new Error(errors.missingParameter);
-        error.parameterName = 'email';
-        throw error;
+        throw new MissingParameterError({ parameterName: 'email' });
     }
 
     try {
         const userAccount = await userAccountsRepository.findOneByEmail(email);
         if (!userAccount) {
-            throw new Error('UserAccount not found for the provided email.');
+            const error = 'UserAccount not found for the provided email.';
+            logger.error(error);
+            throw new NotFoundError({ message: error });
         }
 
         addEffectiveRole(userAccount);
@@ -124,13 +110,8 @@ exports.retrieveByEmail = async function(email) {
         return userAccount;
     }
     catch(err) {
-        if (err.name === 'CastError') {
-            const error = new Error(errors.badlyFormattedParameter);
-            error.parameterName = 'email';
-            throw error;
-        } else {
-            throw err;
-        }
+        logger.error('Failed to retrieve user account by email');
+        throw err;
     }
 };
 
@@ -140,7 +121,7 @@ exports.create = async function(data) {
     if (data.email) {
         const existingUserAccount = await userAccountsRepository.findByEmail(data.email);
         if (existingUserAccount) {
-            throw new Error(errors.duplicateEmail);
+            throw new DuplicateEmailError();
         }
     }
 
@@ -160,22 +141,14 @@ exports.create = async function(data) {
         return savedUserAccount;
     } 
     catch (err) {
-        if (err.name === 'MongoServerError' && err.code === 11000) {
-            // 11000 = Duplicate index
-            const error = new Error(errors.duplicateId);
-            throw error;
-        }
-        else {
-            throw err;
-        }
+        logger.error('Failed to save user account');
+        throw err;
     }
 };
 
 exports.updateFull = async function (userAccountId, data) {
     if (!userAccountId) {
-        const error = new Error(errors.missingParameter);
-        error.parameterName = 'userId';
-        throw error;
+        throw new MissingParameterError({ parameterName: 'userId' });
     }
 
     try {
@@ -183,32 +156,20 @@ exports.updateFull = async function (userAccountId, data) {
         return updatedDocument;
 
     } catch (err) {
-        if (err.name === 'CastError') {
-            const error = new Error(errors.badlyFormattedParameter);
-            error.parameterName = 'userId';
-            throw error;
-        } else if (err.name === 'MongoServerError' && err.code === 11000) {
-            // 11000 = Duplicate index
-            const error = new Error(errors.duplicateId);
-            throw error;
-        } else {
-            throw err;
-        }
+        logger.error('Function "updateFull" failed to update user account by ID');
+        throw err;
     }
 };
 
 exports.delete = async function (userAccountId) {
     if (!userAccountId) {
-        const error = new Error(errors.missingParameter);
-        error.parameterName = 'userId';
-        throw error;
+        throw MissingParameterError({ parameterName: 'userId' });
     }
 
-    // eslint-disable-next-line no-useless-catch
     try {
         return await userAccountsRepository.removeById(userAccountId);
     } catch (err) {
-        // TODO do something with the error
+        logger.error('Function "delete" failed to remove user account by ID');
         throw err;
     }
 };
@@ -240,15 +201,11 @@ exports.addCreatedByUserAccountToAll = async function(attackObjects) {
     }
 }
 
-// TODO migrate database logic to user-accounts-repository.js
 exports.retrieveTeamsByUserId = async function (userAccountId, options) {
     if (!userAccountId) {
-        const error = new Error(errors.missingParameter);
-        error.parameterName = 'userId';
-        throw error;
+        throw new MissingParameterError({ parameterName: 'userId' });
     }
 
-    // eslint-disable-next-line no-useless-catch
     try {
         const results = await teamsRepository.findTeamsByUserId(userAccountId, options);
 
@@ -270,7 +227,7 @@ exports.retrieveTeamsByUserId = async function (userAccountId, options) {
             return results.documents;
         }
     } catch (err) {
-        // TODO do something with the error
+        logger.error('Function "retrieveTeamsByUserId" failed to find teams by user ID');
         throw err;
     }
 };

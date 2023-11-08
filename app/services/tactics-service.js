@@ -1,21 +1,17 @@
 'use strict';
 
-
-const util = require('util');
-
-const Tactic = require('../models/tactic-model');
 const config = require('../config/config');
 
-const { BadlyFormattedParameterError, MissingParameterError } = require('../exceptions');
-
 const BaseService = require('./_base.service');
-const TacticsRepository = require('../repository/tactics-repository');
+const techniquesService = require('./techniques-service');
+const tacticsRepository = require('../repository/tactics-repository');
+
+const {
+    MissingParameterError,
+    TechniquesServiceError } = require('../exceptions');
+
 
 class TacticsService extends BaseService {
-    constructor () {
-        super(TacticsRepository, Tactic);
-        this.retrieveAllTechniques = null;
-    }
 
     static techniqueMatchesTactic(tactic) {
         return function(technique) {
@@ -35,14 +31,12 @@ class TacticsService extends BaseService {
         return data.slice(startPos, endPos);
     }
 
-    async retrieveTechniquesForTactic (stixId, modified, options) {
-        // Late binding to avoid circular dependency between modules
-        if (!this.retrieveAllTechniques) {
-            const techniquesService = require('./techniques-service');
-            this.retrieveAllTechniques = util.promisify(techniquesService.retrieveAll);
+    // Retrieve the techniques associated with the tactic (the tactic identified by stixId and modified date)
+    async retrieveTechniquesForTactic(stixId, modified, options, callback) {
+        if (BaseService.isCallback(arguments[arguments.length - 1])) {
+            callback = arguments[arguments.length - 1];
         }
 
-        // Retrieve the techniques associated with the tactic (the tactic identified by stixId and modified date)
         if (!stixId) {
             throw new MissingParameterError({ parameterName: 'stixId' });
         }
@@ -51,44 +45,46 @@ class TacticsService extends BaseService {
             throw new MissingParameterError({ parameterName: 'modified' });
         }
 
+        let tactic;
         try {
-            const tactic = await Tactic.findOne({ 'stix.id': stixId, 'stix.modified': modified });
-
-            // Note: document is null if not found
-            if (!tactic) {
-                return null;
-            }
-            else {
-                const allTechniques = await this.retrieveAllTechniques({});
-                const filteredTechniques = allTechniques.filter(this.techniqueMatchesTactic(tactic));
-                const pagedResults = this.getPageOfData(filteredTechniques, options);
-
-                if (options.includePagination) {
-                    const returnValue = {
-                        pagination: {
-                            total: pagedResults.length,
-                            offset: options.offset,
-                            limit: options.limit
-                        },
-                        data: pagedResults
-                    };
-                    return returnValue;
-                }
-                else {
-                    return pagedResults;
-                }
-            }
+            tactic = await this.repository.retrieveOneByVersion(stixId, modified);
         }
-        catch(err) {
-            if (err.name === 'CastError') {
-                throw new BadlyFormattedParameterError({ parameterName: 'stixId' });
+        catch (err) {
+            if (callback) {
+                return callback(err);
             }
-            else {
-                throw err;
-            }
+            throw err;
         }
+
+        // Note: document is null if not found
+        if (!tactic) {
+            if (callback) {
+                return callback(null, null);
+            }
+            return null;
+        }
+
+        let allTechniques;
+        try {
+            allTechniques = await techniquesService.retrieveAll();
+        } catch (err) {
+            const techniquesServiceError = new TechniquesServiceError(err);
+            if (callback) {
+                return callback(techniquesServiceError);
+            }
+            throw techniquesServiceError;
+        }
+
+        const filteredTechniques = allTechniques.filter(this.techniqueMatchesTactic(tactic));
+        const pagedResults = TacticsService.getPageOfData(filteredTechniques, options);
+        const paginatedResults = BaseService.paginate(options, pagedResults);
+
+        if (callback) {
+            return callback(null, paginatedResults);
+        }
+        return paginatedResults;
     }
 
 }
 
-module.exports = new TacticsService();
+module.exports = new TacticsService('x-mitre-tactic', tacticsRepository);

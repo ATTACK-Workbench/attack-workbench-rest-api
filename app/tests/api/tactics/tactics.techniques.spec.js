@@ -88,13 +88,19 @@ describe('Tactics with Techniques API', function () {
     });
 
     it('GET /api/tactics/:id/modified/:modified/techniques should return the techniques for tactic 1', async function () {
-        const res = await request(app)
+
+        let res;
+        try {
+            res = await request(app)
             .get(`/api/tactics/${ tactic1.stix.id }/modified/${ tactic1.stix.modified }/techniques`)
             .set('Accept', 'application/json')
             .set('Cookie', `${ login.passportCookieName }=${ passportCookie.value }`)
             .expect(200)
             .expect('Content-Type', /json/);
-
+        } catch (err) {
+            console.log('Get techniques for tactic 1 threw error', err);
+            throw err;
+        }
         const tactics = res.body;
         expect(tactics).toBeDefined();
         expect(Array.isArray(tactics)).toBe(true);

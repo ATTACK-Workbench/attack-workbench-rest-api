@@ -6,15 +6,16 @@ const { GenericServiceError, MissingParameterError } = require('../exceptions');
 const matrixRepository = require('../repository/matrix-repository');
 
 const BaseService = require('./_base.service');
+const tacticsService = require('./tactics-service');
 
 class MatrixService extends BaseService {
 
-    constructor(type, repository) {
-        super(type, repository);
+    // constructor(type, repository) {
+    //     super(type, repository);
 
-        this.retrieveTacticById = null;
-        this.retrieveTechniquesForTactic = null;
-    }
+    //     this.retrieveTacticById = null;
+    //     this.retrieveTechniquesForTactic = null;
+    // }
 
     // Custom methods specific to MatrixService should be specified below
 
@@ -25,11 +26,11 @@ class MatrixService extends BaseService {
         }
 
         // Lazy loading of services
-        if (!this.retrieveTacticById || !this.retrieveTechniquesForTactic) {
-            const tacticsService = require('./tactics-service');
-            this.retrieveTacticById = util.promisify(tacticsService.retrieveById);
-            this.retrieveTechniquesForTactic = tacticsService.retrieveTechniquesForTactic;
-        }
+        // if (!this.retrieveTacticById || !this.retrieveTechniquesForTactic) {
+        //     const tacticsService = require('./tactics-service');
+        //     this.retrieveTacticById = util.promisify(tacticsService.retrieveById);
+        //     this.retrieveTechniquesForTactic = tacticsService.retrieveTechniquesForTactic;
+        // }
 
         if (!stixId) {
             const err = new MissingParameterError({ parameterName: 'stixId' });
@@ -50,7 +51,7 @@ class MatrixService extends BaseService {
         let matrix;
         // eslint-disable-next-line no-useless-catch
         try {
-            matrix = await matrixRepository.retrieveOneByVersion(stixId, modified);
+            matrix = await this.repository.retrieveOneByVersion(stixId, modified);
         } catch (err) {
             if (callback) {
                 return callback(err);
@@ -71,9 +72,9 @@ class MatrixService extends BaseService {
         for (const tacticId of matrix.stix.tactic_refs) {
             let tactics, techniques;
             try {
-                tactics = await this.retrieveTacticById(tacticId, options);
+                tactics = await tacticsService.retrieveById(tacticId, options);
                 if (tactics && tactics.length) {
-                    techniques = await this.retrieveTechniquesForTactic(tacticId, tactics[0].stix.modified, options);
+                    techniques = await tacticsService.retrieveTechniquesForTactic(tacticId, tactics[0].stix.modified, options);
                 }
             } catch (err) {
                 const genericServiceError = new GenericServiceError(err); // TODO it's probably better to throw TechniquesServiceError or TacticsServiceError
